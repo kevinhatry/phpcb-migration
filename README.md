@@ -10,6 +10,7 @@ The class in this project aims at being a drop in replacement to make existing c
 
 Note that the PHP client library v2 needs the C library : libcouchbase version 2.4.5 (at least).
 
+It works with PHP 5.3 (tested with 5.3.9) and higher.
 
 This class was originally developed against PHP client library 2.0.2 and is made to workaround at least two bugs :
 * remove() triggers a segfault when using the persist_to option
