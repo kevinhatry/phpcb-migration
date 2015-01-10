@@ -12,9 +12,7 @@ Note that the PHP client library v2 needs the C library : libcouchbase version 2
 
 It works with PHP 5.3 (tested with 5.3.9) and higher.
 
-This class was originally developed against PHP client library 2.0.2 and is made to workaround at least two bugs :
-* remove() triggers a segfault when using the persist_to option
-* append/prepend do not work with the default encoder
+This class is intended to be used with the PHP client library 2.0.3 or higher. In 2.0.2 and before two bugs existed, to use this version of the PHP client library see the 2.0.2 tag.
 
 It might differ a little from certain return codes with the v1 PHP client library as those were not very well documented.
 
@@ -23,4 +21,4 @@ Its status is : "ready to use with the usual precaution". Some PHP doc might be 
 
 ---
 
-Usual disclaimer : do not put it in production environment without extensive testing.
+Usual disclaimer : do not put it in production environment without extensive testing. This class is provided as is and free to use.

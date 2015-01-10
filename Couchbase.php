@@ -5,7 +5,7 @@
  * In the v1 lib a "Couchbase" class was provided by the PHP module but it disapeared in v2.
  * This class provides the same methods using a CouchbaseCluster objet (the v2 object) underneath.
  *
- * Tested with client library : 2.0.2
+ * Tested with client library : 2.0.3
  * 
  * Note regarding expiry time :
  *    in the libcouchbase documentation (include/libcouchbase/couchbase.h line 1428) it is specified 
@@ -40,7 +40,7 @@ class Couchbase {
     $this->connectCluster($login, $passwd);
     
     // we have to change the transcoder to prevent a strange bug in some decode
-    $this->bucket->setTranscoder('couchbase_basic_encoder_v1_mod', 'couchbase_basic_decoder_v1_mod');
+    $this->bucket->setTranscoder('couchbase_default_encoder', 'couchbase_basic_decoder_v1_mod');
   }
 
   public function rawBucket() {
@@ -577,11 +577,10 @@ class Couchbase {
     
     if (!empty($cas)) { $options['cas'] = $cas; }
     
-    // this crashes the process !
-//    if ($persist_to > 0 || $replicate_to > 0) {
-//      $options['persist_to']    = $persist_to > 0 ? $persist_to : 0;
-//      $options['replicate_to']  = $replicate_to > 0 ? $replicate_to : $persist_to - 1;
-//    }
+    if ($persist_to > 0 || $replicate_to > 0) {
+      $options['persist_to']    = $persist_to > 0 ? $persist_to : 0;
+      $options['replicate_to']  = $replicate_to > 0 ? $replicate_to : $persist_to - 1;
+    }
     
     $resp = $this->bucket->remove($id, $options);
     
@@ -620,12 +619,7 @@ class Couchbase {
     
     try {
 
-      // workaround for a bug in the lib that sends a flag with LCB_APPEND command but it should not !
-      $this->pushEncodingOptions(array('noflags' => 1));
-      
       $resp = $this->bucket->append($id, $document, $options);
-      
-      $this->popEncodingOptions();
       
     } catch (\CouchbaseException $e) {
       if ($e->getCode() == COUCHBASE_NOT_STORED) {
@@ -669,12 +663,7 @@ class Couchbase {
     
     try {
       
-      // workaround for a bug in the lib that sends a flag with LCB_APPEND command but it should not !
-      $this->pushEncodingOptions(array('noflags' => 1));
-      
       $resp = $this->bucket->prepend($id, $document, $options);
-      
-      $this->popEncodingOptions();
       
     } catch (\CouchbaseException $e) {
       if ($e->getCode() == COUCHBASE_NOT_STORED) {
@@ -803,98 +792,6 @@ class Couchbase {
     }
   }
   
-  private function pushEncodingOptions ($values) {
-    if (!isset($GLOBALS['COUCHBASE_COMMAND_ENCOPTS'])) { $GLOBALS['COUCHBASE_COMMAND_ENCOPTS'] = array(); }
-    
-    array_push($GLOBALS['COUCHBASE_COMMAND_ENCOPTS'],$values);
-  }
-  
-  private function popEncodingOptions () {
-    return array_pop($GLOBALS['COUCHBASE_COMMAND_ENCOPTS']);
-  }
-  
-}
-
-// this function is taken from the php-couchbase PHP client lib in the file stub/default_transcoder.php
-// it is slightly modified to correct a bug with append() which does not accept flags (see line 111 in libcouchbase : src/operations/store.c)
-// but the default encoder sends some
-function couchbase_basic_encoder_v1_mod ($value) {
-  global $COUCHBASE_DEFAULT_ENCOPTS, $COUCHBASE_COMMAND_ENCOPTS;
-  
-  $optSpe   = count($COUCHBASE_COMMAND_ENCOPTS) > 0 ? $COUCHBASE_COMMAND_ENCOPTS[count($COUCHBASE_COMMAND_ENCOPTS) - 1] : array();
-  $options  = $COUCHBASE_DEFAULT_ENCOPTS + $optSpe;
-  
-  $data = NULL;
-  $flags = 0;
-  $datatype = 0;
-
-  $sertype    = $options['sertype'];
-  $cmprtype   = $options['cmprtype'];
-  $cmprthresh = $options['cmprthresh'];
-  $cmprfactor = $options['cmprfactor'];
-
-  $vtype = gettype($value);
-  if ($vtype == 'string') {
-      $flags = COUCHBASE_VAL_IS_STRING | COUCHBASE_CFFMT_STRING;
-      $data = $value;
-  } else if ($vtype == 'integer') {
-      $flags = COUCHBASE_VAL_IS_LONG | COUCHBASE_CFFMT_JSON;
-      $data = (string)$value;
-      $cmprtype = COUCHBASE_CMPRTYPE_NONE;
-  } else if ($vtype == 'double') {
-      $flags = COUCHBASE_VAL_IS_DOUBLE | COUCHBASE_CFFMT_JSON;
-      $data = (string)$value;
-      $cmprtype = COUCHBASE_CMPRTYPE_NONE;
-  } else if ($vtype == 'boolean') {
-      $flags = COUCHBASE_VAL_IS_BOOL | COUCHBASE_CFFMT_JSON;
-      $data = $value ? 'true' : 'false';
-      $cmprtype = COUCHBASE_CMPRTYPE_NONE;
-  } else {
-      if ($sertype == COUCHBASE_SERTYPE_JSON) {
-          $flags = COUCHBASE_VAL_IS_JSON | COUCHBASE_CFFMT_JSON;
-          $data = json_encode($value);
-      } else if ($sertype == COUCHBASE_SERTYPE_IGBINARY) {
-          $flags = COUCHBASE_VAL_IS_IGBINARY | COUCHBASE_CFFMT_PRIVATE;
-          $data = igbinary_serialize($value);
-      } else if ($sertype == COUCHBASE_SERTYPE_PHP) {
-          $flags = COUCHBASE_VAL_IS_SERIALIZED | COUCHBASE_CFFMT_PRIVATE;
-          $data = serialize($value);
-      }
-  }
-
-  if (strlen($data) < $cmprthresh) {
-      $cmprtype = COUCHBASE_CMPRTYPE_NONE;
-  }
-
-  if ($cmprtype != COUCHBASE_CMPRTYPE_NONE) {
-      $cmprdata = NULL;
-      $cmprflags = COUCHBASE_COMPRESSION_NONE;
-
-      if ($cmprtype == COUCHBASE_CMPRTYPE_ZLIB) {
-          $cmprdata = gzencode($data);
-          $cmprflags = COUCHBASE_COMPRESSION_ZLIB;
-      } else if ($cmprtype == COUCHBASE_CMPRTYPE_FASTLZ) {
-          $cmprdata = fastlz_compress($data);
-          $cmprflags = COUCHBASE_COMPRESSION_FASTLZ;
-      }
-
-      if ($cmprdata != NULL) {
-          if (strlen($data) > strlen($cmprdata) * $cmprfactor) {
-              $data = $cmprdata;
-              $flags |= $cmprflags;
-              $flags |= COUCHBASE_COMPRESSION_MCISCOMPRESSED;
-
-              $flags &= ~COUCHBASE_CFFMT_MASK;
-              $flags |= COUCHBASE_CFFMT_PRIVATE;
-          }
-      }
-  }
-
-  if (isset($options['noflags']) && $options['noflags']) {
-    $flags = 0;
-  }
-  
-  return array($data, $flags, $datatype);
 }
 
 // this function is taken from the php-couchbase PHP client lib in the file stub/default_transcoder.php
