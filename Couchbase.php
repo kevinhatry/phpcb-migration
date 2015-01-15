@@ -362,35 +362,25 @@ class Couchbase {
       $options['replicate_to']  = $replicate_to > 0 ? $replicate_to : $persist_to - 1;
     }
 
-    // the upsert method can take multiple ids but it can only give the SAME value to each
-    // we have to simulate the old behaviour with a loop !
-
-//    $resp = $this->bucket->upsert($documents, null, $options);
-//    if (is_array($resp)) {
-//      $ret = array();
-//      foreach ($resp as $n => $v) {
-//        if (is_object($v) && is_null($v->error) && is_resource($v->cas)) {
-//          $ret[$n] = $v->cas;
-//        }
-//        else {
-//          $ret[$n] = false;
-//        }
-//      }
-//      return $ret;
-//    }
-    
-    $ret = array();
+     // upsert requires a different syntax than before, so we have to transform the value
+    $req = array();
     foreach ($documents as $id => $document) {
-      $resp = $this->bucket->upsert($id, $document, $options);
-      if (is_object($resp) && !is_null($resp->cas)) {
-        $ret[$id] = $resp->cas;
-      }
-      else {
-        $ret[$id] = false;
-      }
+      $req[$id] = array('value' => $document);
     }
-    
-    if (count($ret) > 0 || count($documents) == 0) { return $ret; }
+
+    $resp = $this->bucket->upsert($req, null, $options);
+    if (is_array($resp)) {
+      $ret = array();
+      foreach ($resp as $n => $v) {
+        if (is_object($v) && is_null($v->error) && is_resource($v->cas)) {
+          $ret[$n] = $v->cas;
+        }
+        else {
+          $ret[$n] = false;
+        }
+      }
+      return $ret;
+    }
     
     return null;
   }
